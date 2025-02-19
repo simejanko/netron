@@ -85,6 +85,11 @@ view.View = class {
                     accelerator: 'CmdOrCtrl+O',
                     execute: async () => await this._host.execute('open')
                 });
+                file.add({
+                    label: 'Open Debug JSON...',
+                    accelerator: 'CmdOrCtrl+Shift+I',
+                    execute: async () => await this.importJson(),
+                });
                 if (this._host.type === 'Electron') {
                     this._recents = file.group('Open &Recent');
                     file.add({
@@ -212,6 +217,38 @@ view.View = class {
         } catch (error) {
             this.error(error, null, null);
         }
+    }
+
+    async importJson() {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+        input.onchange = async (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const json = JSON.parse(e.target.result);
+                        const scores = Object.values(json);
+                        window.quantJson = json;
+                        window.quantMin = Math.min(...scores);
+                        window.quantMax = Math.max(...scores);
+                        this._reload();
+                    } catch (error) {
+                        console.error('Error parsing JSON:', error);
+                    }
+                };
+                reader.readAsText(file);
+            }
+        };
+        input.click();
+    }
+
+    // Add the processJson function to handle the JSON content
+    processJson(json) {
+        // Process the JSON content as needed
+        console.log('Imported JSON:', json);
     }
 
     get host() {
@@ -2036,6 +2073,34 @@ view.Node = class extends grapher.Node {
                     }
                 }
             }
+        }
+    }
+
+    build(document, parent) {
+        super.build(document, parent);
+        //TODO: match input/output names not node names... will also allow weights to be matched... 1 rect per input/output
+        if(window.quantJson && this.value.name && this.value.name + "_output_0" in window.quantJson){
+            const score = window.quantJson[this.value.name+ "_output_0"];
+            const minScore = Math.max(window.quantMin, 0);
+            const maxScore = Math.min(window.quantMax, 50);
+            const normalizedScore = (score -  minScore) / (maxScore - minScore);
+            const red = Math.round(255 * (1 - normalizedScore));
+            const green = Math.round(255 * normalizedScore);
+
+            const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            rect.setAttribute('width', '20');
+            rect.setAttribute('height', '20');
+            rect.setAttribute('fill', `rgb(${red},${green},0)`);
+            rect.setAttribute('x', '-30'); // Position to the left with a 10px gap
+            this.element.appendChild(rect);
+
+            const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            text.setAttribute('x', '-30');
+            text.setAttribute('font-size', '12');
+            text.setAttribute('fill', 'black');
+            text.setAttribute('style', 'dominant-baseline: hanging;');
+            text.textContent = score.toFixed(1);
+            this.element.appendChild(text);
         }
     }
 
